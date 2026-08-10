@@ -1,0 +1,175 @@
+/* ===================================================================
+   CONFIGURAÇÕES GERAIS E JANELA
+   =================================================================== */
+QMainWindow, QDialog {
+    background-color: #F0F0F0;
+}
+
+QWidget {
+    background-color: #F0F0F0;
+    color: #000000; /* Fonte preta */
+    font-family: "Segoe UI", Arial, sans-serif;
+    font-size: 9pt;
+}
+
+/* ===================================================================
+   BARRA DE MENUS E STATUS BAR
+   =================================================================== */
+QMenuBar {
+    background-color: #F0F0F0;
+    color: #000000;
+    border-bottom: 1px solid #D0D0D0;
+}
+
+QMenuBar::item:selected {
+    background-color: #E0E0E0;
+}
+
+QMenu {
+    background-color: #FFFFFF;
+    color: #000000;
+    border: 1px solid #B0B0B0;
+}
+
+QMenu::item:selected {
+    background-color: #D8D8D8;
+    color: #000000;
+}
+
+QStatusBar {
+    background-color: #F0F0F0;
+    color: #333333;
+    border-top: 1px solid #D0D0D0;
+}
+
+/* ===================================================================
+   PAINÉIS / GROUPBOXES
+   =================================================================== */
+QGroupBox {
+    background-color: #D8D8D8; /* Painéis com tom cinza médio igual da imagem */
+    border: 1px solid #B5B5B5;
+    border-radius: 0px;
+    margin-top: 12px;
+    font-weight: bold;
+    color: #000000;
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    padding: 0 4px;
+    background-color: #D8D8D8;
+}
+
+/* ===================================================================
+   CAMPOS DE ENTRADA (QLineEdit, QSpinBox, QComboBox)
+   =================================================================== */
+QLineEdit, QSpinBox, QComboBox {
+    background-color: #FFFFFF;
+    color: #000000;
+    border: 1px solid #A0A0A0;
+    border-radius: 0px;
+    padding: 3px;
+}
+
+QLineEdit:focus, QSpinBox:focus, QComboBox:focus {
+    border: 1px solid #555555;
+}
+
+QComboBox::drop-down {
+    border: 0px;
+}
+
+/* ===================================================================
+   BOTÕES
+   =================================================================== */
+QPushButton {
+    background-color: #E1E1E1;
+    color: #000000;
+    border: 1px solid #A0A0A0;
+    border-radius: 0px;
+    padding: 4px 10px;
+}
+
+QPushButton:hover {
+    background-color: #D5D5D5;
+}
+
+QPushButton:pressed {
+    background-color: #C0C0C0;
+}
+
+QPushButton:disabled {
+    background-color: #EBEBEB;
+    color: #888888;
+    border-color: #CCCCCC;
+}
+
+/* ===================================================================
+   TABELAS (QTableWidget)
+   =================================================================== */
+QTableWidget {
+    background-color: #FFFFFF;
+    color: #000000;
+    gridline-color: #B0B0B0;
+    border: 1px solid #A0A0A0;
+    alternate-background-color: #F5F5F5;
+}
+
+QTableWidget::item:selected {
+    background-color: #CCCCCC;
+    color: #000000;
+}
+
+QHeaderView::section {
+    background-color: #D8D8D8;
+    color: #000000;
+    padding: 4px;
+    border: 1px solid #B0B0B0;
+    font-weight: normal;
+}
+
+/* ===================================================================
+   ABAS (QTabWidget / QTabBar)
+   =================================================================== */
+QTabWidget::pane {
+    border: 1px solid #A0A0A0;
+    background-color: #D8D8D8;
+    top: -1px;
+}
+
+QTabBar::tab {
+    background-color: #E1E1E1;
+    color: #000000;
+    padding: 5px 12px;
+    border: 1px solid #A0A0A0;
+    border-bottom: none;
+    margin-right: 2px;
+}
+
+QTabBar::tab:selected {
+    background-color: #D8D8D8;
+    color: #000000;
+    font-weight: normal;
+}
+
+/* ===================================================================
+   CHECKBOXES
+   =================================================================== */
+QCheckBox {
+    color: #000000;
+    background-color: transparent;
+    spacing: 5px;
+}
+
+QCheckBox::indicator {
+    width: 13px;
+    height: 13px;
+    border: 1px solid #707070;
+    background-color: #FFFFFF;
+}
+
+QCheckBox::indicator:checked {
+    background-color: #0078D7;
+    border-color: #0078D7;
+}

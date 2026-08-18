@@ -49,13 +49,16 @@ class MainWindow(QMainWindow):
 
         self.btn_init = QPushButton("▶ Iniciar Scan LAN")
         self.btn_stop = QPushButton("■ Parar")
+        self.btn_tema = QPushButton("Dark Mode")
         self.btn_stop.setEnabled(False)
 
         self.btn_init.setFixedSize(140, 32)
         self.btn_stop.setFixedSize(90, 32)
+        self.btn_tema.setFixedSize(120, 32)
 
         layout_topo.addWidget(self.btn_init)
         layout_topo.addWidget(self.btn_stop)
+        layout_topo.addWidget(self.btn_tema)
         layout_topo.addStretch()
 
         layout_principal.addWidget(painel_topo)
@@ -218,18 +221,87 @@ class MainWindow(QMainWindow):
         self.btn_scan_wan.clicked.connect(self.iniciar_scan_ip_publico_manual)
         self.tabela_dispositivos.itemDoubleClicked.connect(self.ao_clicar_duplo_dispositivo)
 
+        # =============================================================
+        # 4. CONFIGURAÇÃO DO DARK MODE (Adicionado no final do __init__)
+        # =============================================================
+        self.is_dark_mode = False
+        self.btn_tema.clicked.connect(self.toggle_theme)
+
+    def toggle_theme(self):
+        """Alterna entre o tema claro (padrão) e o tema escuro."""
+        self.is_dark_mode = not self.is_dark_mode
+        
+        if self.is_dark_mode:
+            self.btn_tema.setText("Light Mode")
+            dark_style = """
+                QWidget { 
+                    background-color: #2b2b2b; 
+                    color: #ffffff; 
+                }
+                QTableWidget { 
+                    background-color: #3b3b3b; 
+                    color: #ffffff; 
+                    gridline-color: #555555; 
+                }
+                QHeaderView::section { 
+                    background-color: #1e1e1e; 
+                    color: #ffffff; 
+                    border: 1px solid #444;
+                }
+                QPushButton { 
+                    background-color: #0078d7; 
+                    color: white; 
+                    border-radius: 4px; 
+                    padding: 5px; 
+                }
+                QPushButton:hover { 
+                    background-color: #005a9e; 
+                }
+                QPushButton:disabled {
+                    background-color: #555555;
+                    color: #888888;
+                }
+                QGroupBox { 
+                    border: 1px solid #555555; 
+                    margin-top: 15px; 
+                    border-radius: 3px;
+                }
+                QGroupBox::title { 
+                    subcontrol-origin: margin; 
+                    subcontrol-position: top left;
+                    padding: 0 5px; 
+                    background-color: #2b2b2b; /* Remove o fundo cinza claro */
+                    color: #ffffff;            /* Garante o texto branco */
+                }
+                QLineEdit, QComboBox, QSpinBox {
+                    background-color: #3b3b3b;
+                    color: #ffffff;
+                    border: 1px solid #555555;
+                    padding: 2px;
+                }
+                QCheckBox {
+                    color: #ffffff;
+                }
+            """
+            self.setStyleSheet(dark_style)
+            self.lbl_resumo.setStyleSheet("font-weight: bold; padding: 4px; background-color: #444444; color: #ffffff;")
+        else:
+            self.btn_tema.setText("Dark Mode")
+            self.setStyleSheet("")
+            self.lbl_resumo.setStyleSheet("font-weight: bold; padding: 4px; background-color: #D8D8D8;")
+
     def extrair_lista_portas(self) -> list[int] | None:
         """Converte a string digitada no campo 'Portas' em uma lista de inteiros.
         Retorna None se o campo estiver em branco."""
         texto = self.input_portas_wan.text().strip()
         if not texto:
-            return None  # Retorna None para disparar as PORTAS_PADRAO no scanner
+            return None 
 
         portas = set()
         partes = texto.split(",")
         for parte in partes:
             parte = parte.strip()
-            if "-" in parte:  # Trata intervalos como "22-25"
+            if "-" in parte:
                 try:
                     inicio, fim = parte.split("-")
                     portas.update(range(int(inicio), int(fim) + 1))

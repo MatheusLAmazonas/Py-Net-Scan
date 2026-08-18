@@ -128,16 +128,25 @@ class MainWindow(QMainWindow):
         layout_gb_scanner.addWidget(gb_opcoes)
         layout_esquerdo.addWidget(gb_scanner)
 
-        # --- Subpainel 2: Scan de IP Público / WAN (Embaixo) ---
+        # --- Subpainel 2: Scan de IP Público (WAN) ---
         gb_wan = QGroupBox("Scan de IP Público (WAN)")
         layout_gb_wan = QVBoxLayout(gb_wan)
 
+        # Campo IP Público
         layout_ip_wan = QHBoxLayout()
         layout_ip_wan.addWidget(QLabel("IP Público:"))
         self.input_ip_publico = QLineEdit()
         self.input_ip_publico.setPlaceholderText("Ex: 200.221.2.45")
         layout_ip_wan.addWidget(self.input_ip_publico)
         layout_gb_wan.addLayout(layout_ip_wan)
+
+        # Campo Seleção de Portas Personalizadas
+        layout_portas_wan = QHBoxLayout()
+        layout_portas_wan.addWidget(QLabel("Portas:"))
+        self.input_portas_wan = QLineEdit("")
+        self.input_portas_wan.setPlaceholderText("Ex: 80, 443, 22-25")
+        layout_portas_wan.addWidget(self.input_portas_wan)
+        layout_gb_wan.addLayout(layout_portas_wan)
 
         self.btn_scan_wan = QPushButton("Mapear Portas WAN")
         layout_gb_wan.addWidget(self.btn_scan_wan)
@@ -152,7 +161,7 @@ class MainWindow(QMainWindow):
         layout_direito = QVBoxLayout(widget_direito)
         layout_direito.setContentsMargins(5, 0, 5, 0)
 
-        # Painel Superior: Dispositivos LAN Direto (Sem Abas)
+        # Painel Superior: Dispositivos LAN
         gb_dispositivos = QGroupBox("Dispositivos LAN")
         layout_gb_disp = QVBoxLayout(gb_dispositivos)
 
@@ -169,17 +178,16 @@ class MainWindow(QMainWindow):
 
         layout_direito.addWidget(gb_dispositivos, stretch=1)
 
-        # Painel Inferior: Mapeamento de Portas e Serviços
+        # Painel Inferior: Mapeamento de Portas
         gb_detalhes = QGroupBox("Mapeamento de Portas")
         layout_detalhes_main = QHBoxLayout(gb_detalhes)
 
-        # Tabela Inferior de Portas
         self.tabela_portas = QTableWidget(0, 5)
         self.tabela_portas.setHorizontalHeaderLabels(["Porta", "Protocolo", "Estado", "Serviço", "Versão"])
         self.tabela_portas.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         layout_detalhes_main.addWidget(self.tabela_portas, stretch=2)
 
-        # Área de Texto/Informações Adicionais
+        # Detalhes do Alvo
         widget_info = QWidget()
         layout_info = QVBoxLayout(widget_info)
         layout_info.addWidget(QLabel("<b>Detalhes do Alvo:</b>"))
@@ -193,7 +201,7 @@ class MainWindow(QMainWindow):
 
         layout_direito.addWidget(gb_detalhes, stretch=1)
 
-        # Adiciona lado esquerdo e direito ao Splitter
+        # Splitter Layout
         splitter.addWidget(widget_esquerdo)
         splitter.addWidget(widget_direito)
         splitter.setSizes([340, 860])
@@ -205,11 +213,32 @@ class MainWindow(QMainWindow):
         # -------------------------------------------------------------
         self.statusBar().showMessage("Pronto")
 
-        # Conectar eventos
         self.btn_init.clicked.connect(self.iniciar_scan)
         self.btn_stop.clicked.connect(self.parar_scan)
         self.btn_scan_wan.clicked.connect(self.iniciar_scan_ip_publico_manual)
         self.tabela_dispositivos.itemDoubleClicked.connect(self.ao_clicar_duplo_dispositivo)
+
+    def extrair_lista_portas(self) -> list[int] | None:
+        """Converte a string digitada no campo 'Portas' em uma lista de inteiros.
+        Retorna None se o campo estiver em branco."""
+        texto = self.input_portas_wan.text().strip()
+        if not texto:
+            return None  # Retorna None para disparar as PORTAS_PADRAO no scanner
+
+        portas = set()
+        partes = texto.split(",")
+        for parte in partes:
+            parte = parte.strip()
+            if "-" in parte:  # Trata intervalos como "22-25"
+                try:
+                    inicio, fim = parte.split("-")
+                    portas.update(range(int(inicio), int(fim) + 1))
+                except ValueError:
+                    continue
+            elif parte.isdigit():
+                portas.add(int(parte))
+
+        return sorted(list(portas)) if portas else None
 
     def iniciar_scan(self):
         ip_de = self.input_ip_de.text().strip()
@@ -276,11 +305,14 @@ class MainWindow(QMainWindow):
         self.lbl_detalhe_nome.setText(f"Nome: {nome_alvo}")
         self.tabela_portas.setRowCount(0)
 
+        # Obtém a lista de portas configuradas pelo usuário
+        portas_personalizadas = self.extrair_lista_portas()
+
         self.btn_scan_wan.setEnabled(False)
         self.btn_stop.setEnabled(True)
         self.statusBar().showMessage(f"Escaneando portas em {ip_alvo}...")
 
-        self.worker_wan = WANWorkerThread(ip_alvo)
+        self.worker_wan = WANWorkerThread(ip_alvo, portas_personalizadas)
         self.worker_wan.concluido.connect(self.exibir_portas_abertas)
         self.worker_wan.start()
 

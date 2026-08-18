@@ -18,11 +18,12 @@ class ICMPWorkerThread(QThread):
 class WANWorkerThread(QThread):
     concluido = Signal(list)
 
-    def __init__(self, ip_publico: str, portas: list[int] = None):
+    def __init__(self, ip_target: str, portas: list[int] = None):
         super().__init__()
-        self.ip_publico = ip_publico
+        self.ip_target = ip_target
         self.portas = portas
 
     def run(self):
-        resultados = escanear_ip_publico(self.ip_publico, self.portas)
+        # Passa a lista personalizada de portas para a função
+        resultados = escanear_ip_publico(self.ip_target, self.portas)
         self.concluido.emit(resultados)

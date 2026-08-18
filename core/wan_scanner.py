@@ -36,7 +36,8 @@ async def _testar_porta_tcp(ip: str, porta: int, timeout: float = 1.0) -> dict:
         }
 
 async def _escanear_portas_async(ip: str, portas: list[int] = None) -> list[dict]:
-    if portas is None:
+    # Trata caso receba None ou lista vazia []
+    if not portas:
         portas = PORTAS_PADRAO
 
     tarefas = [_testar_porta_tcp(ip, porta) for porta in portas]

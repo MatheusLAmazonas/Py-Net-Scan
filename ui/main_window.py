@@ -1,4 +1,6 @@
-from PySide6.QtCore import Qt
+import sys
+
+from PySide6.QtCore import QProcess, Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -13,12 +15,115 @@ from PySide6.QtWidgets import (
     QSplitter,
     QTableWidget,
     QTableWidgetItem,
+    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
 from ui.threads import ICMPWorkerThread, WANWorkerThread
 
+
+class TerminalWidget(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        # Display do terminal
+        self.output_terminal = QTextEdit()
+        self.output_terminal.setReadOnly(True)
+
+        # Campo para digitar o comando
+        self.input_comando = QLineEdit()
+        self.input_comando.setPlaceholderText("Digite um comando (ex: ping 127.0.0.1)...")
+
+        layout.addWidget(self.output_terminal)
+        layout.addWidget(self.input_comando)
+
+        # Processo assíncrono para execução no SO
+        self.processo = QProcess(self)
+        self.processo.readyReadStandardOutput.connect(self.ler_saida_padrao)
+        self.processo.readyReadStandardError.connect(self.ler_saida_erro)
+        self.processo.finished.connect(self.processo_finalizado)
+
+        self.input_comando.returnPressed.connect(self.executar_comando)
+
+        # Aplica o estilo inicial (Light)
+        self.atualizar_tema(is_dark=False)
+
+    def atualizar_tema(self, is_dark: bool):
+        """Atualiza dinamicamente as cores do terminal para Dark ou Light Mode."""
+        if is_dark:
+            bg_color = "#1e1e1e"
+            text_color = "#ffffff" 
+            border_color = "#555555"
+            input_bg = "#3b3b3b"
+            input_text = "#ffffff"
+        else:
+            bg_color = "#ffffff"
+            text_color = "#1e1e1e"
+            border_color = "#c0c0c0"
+            input_bg = "#ffffff"
+            input_text = "#1e1e1e"
+
+        self.output_terminal.setStyleSheet(
+            f"""
+            QTextEdit {{
+                background-color: {bg_color};
+                color: {text_color};
+                font-family: Consolas, 'Courier New', Monospace;
+                font-size: 9pt;
+                border: 1px solid {border_color};
+            }}
+            """
+        )
+
+        self.input_comando.setStyleSheet(
+            f"""
+            QLineEdit {{
+                background-color: {input_bg};
+                color: {input_text};
+                font-family: Consolas, 'Courier New', Monospace;
+                border: 1px solid {border_color};
+                padding: 3px;
+            }}
+            """
+        )
+
+    def executar_comando(self):
+        comando = self.input_comando.text().strip()
+        if not comando:
+            return
+
+        self.input_comando.clear()
+
+        # Limpar tela localmente
+        if comando.lower() in ["cls", "clear"]:
+            self.output_terminal.clear()
+            return
+
+        self.output_terminal.append(f"> {comando}")
+
+        if sys.platform == "win32":
+            self.processo.start("cmd.exe", ["/c", comando])
+        else:
+            self.processo.start("sh", ["-c", comando])
+
+    def ler_saida_padrao(self):
+        dados = self.processo.readAllStandardOutput()
+        texto = dados.data().decode("cp850", errors="replace")
+        self.output_terminal.insertPlainText(texto)
+        self.output_terminal.ensureCursorVisible()
+
+    def ler_saida_erro(self):
+        dados = self.processo.readAllStandardError()
+        texto = dados.data().decode("cp850", errors="replace")
+        self.output_terminal.insertPlainText(texto)
+        self.output_terminal.ensureCursorVisible()
+
+    def processo_finalizado(self):
+        self.output_terminal.append("> Concluído.\n")
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -69,7 +174,7 @@ class MainWindow(QMainWindow):
         splitter = QSplitter(Qt.Orientation.Horizontal)
 
         # =============================================================
-        # LADO ESQUERDO: PAINEL DE PARÂMETROS / SCANNER
+        # LADO ESQUERDO: PAINEL DE PARÂMETROS, SCANNER E TERMINAL
         # =============================================================
         widget_esquerdo = QWidget()
         layout_esquerdo = QVBoxLayout(widget_esquerdo)
@@ -123,7 +228,6 @@ class MainWindow(QMainWindow):
         gb_wan = QGroupBox("Scan de IP Público (WAN)")
         layout_gb_wan = QVBoxLayout(gb_wan)
 
-        # Campo IP Público
         layout_ip_wan = QHBoxLayout()
         layout_ip_wan.addWidget(QLabel("IP Público:"))
         self.input_ip_publico = QLineEdit()
@@ -131,7 +235,6 @@ class MainWindow(QMainWindow):
         layout_ip_wan.addWidget(self.input_ip_publico)
         layout_gb_wan.addLayout(layout_ip_wan)
 
-        # Campo Seleção de Portas Personalizadas
         layout_portas_wan = QHBoxLayout()
         layout_portas_wan.addWidget(QLabel("Portas:"))
         self.input_portas_wan = QLineEdit("")
@@ -143,7 +246,15 @@ class MainWindow(QMainWindow):
         layout_gb_wan.addWidget(self.btn_scan_wan)
 
         layout_esquerdo.addWidget(gb_wan)
-        layout_esquerdo.addStretch()
+
+        # --- Subpainel 3: Mini Terminal (Abaixo do Scan WAN) ---
+        gb_terminal = QGroupBox("Terminal")
+        layout_gb_terminal = QVBoxLayout(gb_terminal)
+        
+        self.terminal = TerminalWidget()
+        layout_gb_terminal.addWidget(self.terminal)
+
+        layout_esquerdo.addWidget(gb_terminal)
 
         # =============================================================
         # LADO DIREITO: PAINÉIS DE DISPOSITIVOS E PORTAS
@@ -210,7 +321,7 @@ class MainWindow(QMainWindow):
         self.tabela_dispositivos.itemDoubleClicked.connect(self.ao_clicar_duplo_dispositivo)
 
         # =============================================================
-        # 4. CONFIGURAÇÃO DO DARK MODE (Adicionado no final do __init__)
+        # 4. CONFIGURAÇÃO DO DARK MODE
         # =============================================================
         self.is_dark_mode = False
         self.btn_tema.clicked.connect(self.toggle_theme)
@@ -218,7 +329,7 @@ class MainWindow(QMainWindow):
     def toggle_theme(self):
         """Alterna entre o tema claro (padrão) e o tema escuro."""
         self.is_dark_mode = not self.is_dark_mode
-        
+
         if self.is_dark_mode:
             self.btn_tema.setText("Light Mode")
             dark_style = """
@@ -258,8 +369,8 @@ class MainWindow(QMainWindow):
                     subcontrol-origin: margin; 
                     subcontrol-position: top left;
                     padding: 0 5px; 
-                    background-color: #2b2b2b; /* Remove o fundo cinza claro */
-                    color: #ffffff;            /* Garante o texto branco */
+                    background-color: #2b2b2b; 
+                    color: #ffffff; 
                 }
                 QLineEdit, QComboBox, QSpinBox {
                     background-color: #3b3b3b;
@@ -272,18 +383,21 @@ class MainWindow(QMainWindow):
                 }
             """
             self.setStyleSheet(dark_style)
-            self.lbl_resumo.setStyleSheet("font-weight: bold; padding: 4px; background-color: #444444; color: #ffffff;")
+            self.lbl_resumo.setStyleSheet(
+                "font-weight: bold; padding: 4px; background-color: #444444; color: #ffffff;"
+            )
         else:
             self.btn_tema.setText("Dark Mode")
             self.setStyleSheet("")
             self.lbl_resumo.setStyleSheet("font-weight: bold; padding: 4px; background-color: #D8D8D8;")
 
+        # Atualiza o terminal com o estado atual do tema
+        self.terminal.atualizar_tema(self.is_dark_mode)
+
     def extrair_lista_portas(self) -> list[int] | None:
-        """Converte a string digitada no campo 'Portas' em uma lista de inteiros.
-        Retorna None se o campo estiver em branco."""
         texto = self.input_portas_wan.text().strip()
         if not texto:
-            return None 
+            return None
 
         portas = set()
         partes = texto.split(",")
@@ -365,7 +479,6 @@ class MainWindow(QMainWindow):
         self.lbl_detalhe_nome.setText(f"Nome: {nome_alvo}")
         self.tabela_portas.setRowCount(0)
 
-        # Obtém a lista de portas configuradas pelo usuário
         portas_personalizadas = self.extrair_lista_portas()
 
         self.btn_scan_wan.setEnabled(False)

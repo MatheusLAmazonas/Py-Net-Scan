@@ -108,18 +108,6 @@ class MainWindow(QMainWindow):
         gb_opcoes = QGroupBox("Opções LAN")
         layout_opcoes = QVBoxLayout(gb_opcoes)
 
-        self.chk_tcp = QCheckBox("Verificar portas (TCP)")
-        self.chk_tcp.setChecked(True)
-        layout_opcoes.addWidget(self.chk_tcp)
-
-        self.chk_ping = QCheckBox("Ping antes do scan")
-        self.chk_ping.setChecked(True)
-        layout_opcoes.addWidget(self.chk_ping)
-
-        self.chk_dns = QCheckBox("Resolver nomes (DNS)")
-        self.chk_dns.setChecked(True)
-        layout_opcoes.addWidget(self.chk_dns)
-
         layout_threads = QHBoxLayout()
         layout_threads.addWidget(QLabel("Threads:"))
         self.spin_threads = QSpinBox()

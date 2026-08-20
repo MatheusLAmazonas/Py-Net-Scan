@@ -6,13 +6,15 @@ class ICMPWorkerThread(QThread):
     # Sinal emitido ao terminar com a lista de dispositivos encontrados
     concluido = Signal(list)
 
-    def __init__(self, ip_de: str, ip_ate: str):
+    def __init__(self, ip_de: str, ip_ate: str, threads: int = 100):
         super().__init__()
         self.ip_de = ip_de
         self.ip_ate = ip_ate
+        self.threads = threads
 
     def run(self):
-        resultados = escanear_faixa(self.ip_de, self.ip_ate)
+        # Repassa o limite de concorrência selecionado na interface
+        resultados = escanear_faixa(self.ip_de, self.ip_ate, self.threads)
         self.concluido.emit(resultados)
 
 class WANWorkerThread(QThread):

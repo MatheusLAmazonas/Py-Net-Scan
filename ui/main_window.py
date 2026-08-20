@@ -417,14 +417,16 @@ class MainWindow(QMainWindow):
     def iniciar_scan(self):
         ip_de = self.input_ip_de.text().strip()
         ip_ate = self.input_ip_ate.text().strip()
+        num_threads = self.spin_threads.value()  # Resgata o valor selecionado na UI
 
         self.tabela_dispositivos.setRowCount(0)
         self.lbl_resumo.setText("Escaneando a rede...")
         self.btn_init.setEnabled(False)
         self.btn_stop.setEnabled(True)
-        self.statusBar().showMessage(f"Escaneando faixa {ip_de} até {ip_ate}...")
+        self.statusBar().showMessage(f"Escaneando faixa {ip_de} até {ip_ate}")
 
-        self.worker = ICMPWorkerThread(ip_de, ip_ate)
+        # Passa o número de threads para o WorkerThread
+        self.worker = ICMPWorkerThread(ip_de, ip_ate, num_threads)
         self.worker.concluido.connect(self.ao_concluir_scan)
         self.worker.start()
 

@@ -1,5 +1,5 @@
 import sys
-
+import os
 from PySide6.QtCore import QProcess, Qt
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -19,7 +19,6 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-
 from ui.threads import ICMPWorkerThread, WANWorkerThread
 
 
@@ -49,6 +48,9 @@ class TerminalWidget(QWidget):
 
         self.input_comando.returnPressed.connect(self.executar_comando)
 
+        # Codificação de caracteres dinâmica por plataforma
+        self.encoding = "cp850" if sys.platform == "win32" else "utf-8"
+
         # Aplica o estilo inicial (Light)
         self.atualizar_tema(is_dark=False)
 
@@ -56,7 +58,7 @@ class TerminalWidget(QWidget):
         """Atualiza dinamicamente as cores do terminal para Dark ou Light Mode."""
         if is_dark:
             bg_color = "#1e1e1e"
-            text_color = "#ffffff" 
+            text_color = "#ffffff"
             border_color = "#555555"
             input_bg = "#3b3b3b"
             input_text = "#ffffff"
@@ -98,27 +100,30 @@ class TerminalWidget(QWidget):
 
         self.input_comando.clear()
 
-        # Limpar tela localmente
+        # Limpar tela localmente (funciona em Windows, Linux e macOS)
         if comando.lower() in ["cls", "clear"]:
             self.output_terminal.clear()
             return
 
         self.output_terminal.append(f"> {comando}")
 
+        # Identificação e execução por Sistema Operacional
         if sys.platform == "win32":
             self.processo.start("cmd.exe", ["/c", comando])
         else:
-            self.processo.start("sh", ["-c", comando])
+            # Atende macOS e Linux utilizando a variável de ambiente do Shell do usuário
+            shell = os.environ.get("SHELL", "/bin/sh")
+            self.processo.start(shell, ["-c", comando])
 
     def ler_saida_padrao(self):
         dados = self.processo.readAllStandardOutput()
-        texto = dados.data().decode("cp850", errors="replace")
+        texto = dados.data().decode(self.encoding, errors="replace")
         self.output_terminal.insertPlainText(texto)
         self.output_terminal.ensureCursorVisible()
 
     def ler_saida_erro(self):
         dados = self.processo.readAllStandardError()
-        texto = dados.data().decode("cp850", errors="replace")
+        texto = dados.data().decode(self.encoding, errors="replace")
         self.output_terminal.insertPlainText(texto)
         self.output_terminal.ensureCursorVisible()
 

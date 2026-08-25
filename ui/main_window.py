@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 from ui.threads import ICMPWorkerThread, WANWorkerThread
+from ui.toggle_switch import ToggleSwitch
 
 
 class TerminalWidget(QWidget):
@@ -159,7 +160,7 @@ class MainWindow(QMainWindow):
 
         self.btn_init = QPushButton("▶ Iniciar Scan LAN")
         self.btn_stop = QPushButton("■ Parar")
-        self.btn_tema = QPushButton("Dark Mode")
+        self.btn_tema = ToggleSwitch()
         self.btn_stop.setEnabled(False)
 
         self.btn_init.setFixedSize(140, 32)
@@ -168,8 +169,9 @@ class MainWindow(QMainWindow):
 
         layout_topo.addWidget(self.btn_init)
         layout_topo.addWidget(self.btn_stop)
-        layout_topo.addWidget(self.btn_tema)
         layout_topo.addStretch()
+        layout_topo.addWidget(self.btn_tema)
+        
 
         layout_principal.addWidget(painel_topo)
 
@@ -392,7 +394,7 @@ class MainWindow(QMainWindow):
                 "font-weight: bold; padding: 4px; background-color: #444444; color: #ffffff;"
             )
         else:
-            self.btn_tema.setText("Dark Mode")
+            self.btn_tema = ToggleSwitch()
             self.setStyleSheet("")
             self.lbl_resumo.setStyleSheet("font-weight: bold; padding: 4px; background-color: #D8D8D8;")
 

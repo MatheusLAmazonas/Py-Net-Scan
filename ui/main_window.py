@@ -1,6 +1,8 @@
 import sys
 import os
-from PySide6.QtCore import QProcess, Qt
+import time
+from PySide6.QtCore import QProcess, Qt, QRegularExpression
+from PySide6.QtGui import QRegularExpressionValidator
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -10,6 +12,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMainWindow,
+    QMessageBox,
     QPushButton,
     QSpinBox,
     QSplitter,
@@ -21,6 +24,11 @@ from PySide6.QtWidgets import (
 )
 from ui.threads import ICMPWorkerThread, WANWorkerThread
 from ui.toggle_switch import ToggleSwitch
+from core.validators import validar_faixa_ip, validar_ip, validar_lista_portas
+
+
+# Estilo aplicado a um QLineEdit quando o valor digitado é inválido.
+ESTILO_CAMPO_INVALIDO = "border: 1px solid #D9534F; background-color: #FDECEA; color: #1e1e1e;"
 
 
 class TerminalWidget(QWidget):
@@ -37,6 +45,10 @@ class TerminalWidget(QWidget):
         # Campo para digitar o comando
         self.input_comando = QLineEdit()
         self.input_comando.setPlaceholderText("Digite um comando (ex: ping 127.0.0.1)...")
+        self.input_comando.setToolTip(
+            "Executa um comando diretamente no terminal do sistema operacional.\n"
+            "Digite 'cls' ou 'clear' para limpar a tela."
+        )
 
         layout.addWidget(self.output_terminal)
         layout.addWidget(self.input_comando)
@@ -46,6 +58,7 @@ class TerminalWidget(QWidget):
         self.processo.readyReadStandardOutput.connect(self.ler_saida_padrao)
         self.processo.readyReadStandardError.connect(self.ler_saida_erro)
         self.processo.finished.connect(self.processo_finalizado)
+        self.processo.errorOccurred.connect(self.processo_com_erro)
 
         self.input_comando.returnPressed.connect(self.executar_comando)
 
@@ -106,15 +119,25 @@ class TerminalWidget(QWidget):
             self.output_terminal.clear()
             return
 
+        # Impede múltiplos comandos simultâneos no mesmo processo
+        if self.processo.state() != QProcess.ProcessState.NotRunning:
+            self.output_terminal.append(
+                "> [Erro] Já existe um comando em execução. Aguarde terminar."
+            )
+            return
+
         self.output_terminal.append(f"> {comando}")
 
-        # Identificação e execução por Sistema Operacional
-        if sys.platform == "win32":
-            self.processo.start("cmd.exe", ["/c", comando])
-        else:
-            # Atende macOS e Linux utilizando a variável de ambiente do Shell do usuário
-            shell = os.environ.get("SHELL", "/bin/sh")
-            self.processo.start(shell, ["-c", comando])
+        try:
+            # Identificação e execução por Sistema Operacional
+            if sys.platform == "win32":
+                self.processo.start("cmd.exe", ["/c", comando])
+            else:
+                # Atende macOS e Linux utilizando a variável de ambiente do Shell do usuário
+                shell = os.environ.get("SHELL", "/bin/sh")
+                self.processo.start(shell, ["-c", comando])
+        except Exception as erro:
+            self.output_terminal.append(f"> [Erro ao iniciar processo] {erro}")
 
     def ler_saida_padrao(self):
         dados = self.processo.readAllStandardOutput()
@@ -131,6 +154,10 @@ class TerminalWidget(QWidget):
     def processo_finalizado(self):
         self.output_terminal.append("> Concluído.\n")
 
+    def processo_com_erro(self, erro):
+        self.output_terminal.append(f"> [Falha ao executar o comando] Código de erro: {erro}\n")
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -140,6 +167,7 @@ class MainWindow(QMainWindow):
 
         self.worker = None
         self.worker_wan = None
+        self._inicio_scan_lan = None
 
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -195,15 +223,32 @@ class MainWindow(QMainWindow):
         gb_ip_range = QGroupBox("Faixa de IP")
         layout_ip = QVBoxLayout(gb_ip_range)
 
+        # Regex simples para bloquear digitação de caracteres claramente
+        # inválidos em campos de IP (permite dígitos e pontos).
+        regex_ip = QRegularExpression(r"^[0-9.]{0,15}$")
+        validador_ip = QRegularExpressionValidator(regex_ip)
+
         layout_de = QHBoxLayout()
         layout_de.addWidget(QLabel("De:"))
         self.input_ip_de = QLineEdit("192.168.1.1")
+        self.input_ip_de.setValidator(validador_ip)
+        self.input_ip_de.setToolTip(
+            "IP inicial da varredura (formato IPv4, ex: 192.168.1.1).\n"
+            "Deve estar na mesma sub-rede do IP final."
+        )
+        self.input_ip_de.textChanged.connect(lambda: self._limpar_estilo_erro(self.input_ip_de))
         layout_de.addWidget(self.input_ip_de)
         layout_ip.addLayout(layout_de)
 
         layout_ate = QHBoxLayout()
         layout_ate.addWidget(QLabel("Até:"))
         self.input_ip_ate = QLineEdit("192.168.1.254")
+        self.input_ip_ate.setValidator(validador_ip)
+        self.input_ip_ate.setToolTip(
+            "IP final da varredura (formato IPv4, ex: 192.168.1.254).\n"
+            "Deve ser maior ou igual ao IP inicial."
+        )
+        self.input_ip_ate.textChanged.connect(lambda: self._limpar_estilo_erro(self.input_ip_ate))
         layout_ate.addWidget(self.input_ip_ate)
         layout_ip.addLayout(layout_ate)
 
@@ -211,6 +256,7 @@ class MainWindow(QMainWindow):
         layout_mask.addWidget(QLabel("Máscara:"))
         self.combo_mask = QComboBox()
         self.combo_mask.addItems(["/24 (255.255.255.0)", "/16 (255.255.0.0)", "/8 (255.0.0.0)"])
+        self.combo_mask.setToolTip("Máscara de sub-rede de referência para a faixa informada.")
         layout_mask.addWidget(self.combo_mask)
         layout_ip.addLayout(layout_mask)
 
@@ -225,6 +271,10 @@ class MainWindow(QMainWindow):
         self.spin_threads = QSpinBox()
         self.spin_threads.setRange(1, 500)
         self.spin_threads.setValue(100)
+        self.spin_threads.setToolTip(
+            "Número máximo de varreduras simultâneas (1 a 500).\n"
+            "Valores muito altos podem sobrecarregar a rede."
+        )
         layout_threads.addWidget(self.spin_threads)
         layout_opcoes.addLayout(layout_threads)
 
@@ -239,6 +289,13 @@ class MainWindow(QMainWindow):
         layout_ip_wan.addWidget(QLabel("IP Público:"))
         self.input_ip_publico = QLineEdit()
         self.input_ip_publico.setPlaceholderText("Ex: 200.221.2.45")
+        self.input_ip_publico.setValidator(validador_ip)
+        self.input_ip_publico.setToolTip(
+            "Endereço IPv4 público a ser escaneado (formato: 0-255 em cada octeto)."
+        )
+        self.input_ip_publico.textChanged.connect(
+            lambda: self._limpar_estilo_erro(self.input_ip_publico)
+        )
         layout_ip_wan.addWidget(self.input_ip_publico)
         layout_gb_wan.addLayout(layout_ip_wan)
 
@@ -246,6 +303,13 @@ class MainWindow(QMainWindow):
         layout_portas_wan.addWidget(QLabel("Portas:"))
         self.input_portas_wan = QLineEdit("")
         self.input_portas_wan.setPlaceholderText("Ex: 80, 443, 22-25")
+        self.input_portas_wan.setToolTip(
+            "Lista de portas separadas por vírgula. Aceita intervalos (ex: 22-25).\n"
+            "Deixe em branco para usar a lista padrão de portas comuns."
+        )
+        self.input_portas_wan.textChanged.connect(
+            lambda: self._limpar_estilo_erro(self.input_portas_wan)
+        )
         layout_portas_wan.addWidget(self.input_portas_wan)
         layout_gb_wan.addLayout(layout_portas_wan)
 
@@ -281,9 +345,19 @@ class MainWindow(QMainWindow):
         self.tabela_dispositivos.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         layout_gb_disp.addWidget(self.tabela_dispositivos)
 
+        layout_rodape_disp = QHBoxLayout()
+
         self.lbl_resumo = QLabel("0 Dispositivo(s) encontrado(s)")
         self.lbl_resumo.setStyleSheet("font-weight: bold; padding: 4px; background-color: #D8D8D8;")
-        layout_gb_disp.addWidget(self.lbl_resumo)
+        layout_rodape_disp.addWidget(self.lbl_resumo, stretch=1)
+
+        # Mostra quanto tempo o último scan levou (espelhando o resumo, no lado oposto)
+        self.lbl_duracao_scan = QLabel("")
+        self.lbl_duracao_scan.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self.lbl_duracao_scan.setStyleSheet("font-weight: bold; padding: 4px; background-color: #D8D8D8;")
+        layout_rodape_disp.addWidget(self.lbl_duracao_scan)
+
+        layout_gb_disp.addLayout(layout_rodape_disp)
 
         layout_direito.addWidget(gb_dispositivos, stretch=1)
 
@@ -332,6 +406,32 @@ class MainWindow(QMainWindow):
         # =============================================================
         self.is_dark_mode = False
         self.btn_tema.clicked.connect(self.toggle_theme)
+
+    # -----------------------------------------------------------------
+    # Helpers de validação / feedback visual
+    # -----------------------------------------------------------------
+    def _marcar_campo_invalido(self, campo: QLineEdit):
+        campo.setStyleSheet(ESTILO_CAMPO_INVALIDO)
+
+    def _limpar_estilo_erro(self, campo: QLineEdit):
+        campo.setStyleSheet("")
+
+    @staticmethod
+    def _formatar_duracao(instante_inicio: float | None) -> str:
+        """Formata o tempo decorrido desde instante_inicio no padrão HH:MM:SS."""
+        if instante_inicio is None:
+            return "-"
+
+        segundos_totais = int(time.perf_counter() - instante_inicio)
+        horas, resto = divmod(segundos_totais, 3600)
+        minutos, segundos = divmod(resto, 60)
+        return f"{horas:02d}:{minutos:02d}:{segundos:02d}"
+
+    def _mostrar_erro(self, titulo: str, mensagem: str):
+        """Mostra o erro tanto na status bar (feedback rápido) quanto em
+        um popup (garante que o usuário não perca a mensagem)."""
+        self.statusBar().showMessage(f"Erro: {mensagem}", 8000)
+        QMessageBox.warning(self, titulo, mensagem)
 
     def toggle_theme(self):
         """Alterna entre o tema claro (padrão) e o tema escuro."""
@@ -390,47 +490,55 @@ class MainWindow(QMainWindow):
                 }
             """
             self.setStyleSheet(dark_style)
-            self.lbl_resumo.setStyleSheet(
-                "font-weight: bold; padding: 4px; background-color: #444444; color: #ffffff;"
-            )
+            estilo_rodape_dark = "font-weight: bold; padding: 4px; background-color: #444444; color: #ffffff;"
+            self.lbl_resumo.setStyleSheet(estilo_rodape_dark)
+            self.lbl_duracao_scan.setStyleSheet(estilo_rodape_dark)
         else:
             self.btn_tema = ToggleSwitch()
             self.setStyleSheet("")
-            self.lbl_resumo.setStyleSheet("font-weight: bold; padding: 4px; background-color: #D8D8D8;")
+            estilo_rodape_light = "font-weight: bold; padding: 4px; background-color: #D8D8D8;"
+            self.lbl_resumo.setStyleSheet(estilo_rodape_light)
+            self.lbl_duracao_scan.setStyleSheet(estilo_rodape_light)
 
         # Atualiza o terminal com o estado atual do tema
         self.terminal.atualizar_tema(self.is_dark_mode)
 
     def extrair_lista_portas(self) -> list[int] | None:
+        """Mantido por compatibilidade; a validação "de verdade" agora
+        acontece em core.validators.validar_lista_portas, chamada antes
+        de iniciar o scan WAN."""
         texto = self.input_portas_wan.text().strip()
         if not texto:
             return None
 
-        portas = set()
-        partes = texto.split(",")
-        for parte in partes:
-            parte = parte.strip()
-            if "-" in parte:
-                try:
-                    inicio, fim = parte.split("-")
-                    portas.update(range(int(inicio), int(fim) + 1))
-                except ValueError:
-                    continue
-            elif parte.isdigit():
-                portas.add(int(parte))
-
-        return sorted(list(portas)) if portas else None
+        ok, _, portas = validar_lista_portas(texto)
+        return portas if ok else None
 
     def iniciar_scan(self):
         ip_de = self.input_ip_de.text().strip()
         ip_ate = self.input_ip_ate.text().strip()
         num_threads = self.spin_threads.value()  # Resgata o valor selecionado na UI
 
+        # --- Validação da faixa de IP antes de disparar o worker ---
+        self._limpar_estilo_erro(self.input_ip_de)
+        self._limpar_estilo_erro(self.input_ip_ate)
+
+        ok, mensagem = validar_faixa_ip(ip_de, ip_ate)
+        if not ok:
+            self._marcar_campo_invalido(self.input_ip_de)
+            self._marcar_campo_invalido(self.input_ip_ate)
+            self._mostrar_erro("Faixa de IP inválida", mensagem)
+            return
+
         self.tabela_dispositivos.setRowCount(0)
         self.lbl_resumo.setText("Escaneando a rede...")
+        self.lbl_duracao_scan.setText("")
         self.btn_init.setEnabled(False)
         self.btn_stop.setEnabled(True)
         self.statusBar().showMessage(f"Escaneando faixa {ip_de} até {ip_ate}")
+
+        # Marca o instante de início para calcular a duração ao concluir
+        self._inicio_scan_lan = time.perf_counter()
 
         # Passa o número de threads para o WorkerThread
         self.worker = ICMPWorkerThread(ip_de, ip_ate, num_threads)
@@ -449,6 +557,8 @@ class MainWindow(QMainWindow):
         self.btn_stop.setEnabled(False)
         self.btn_scan_wan.setEnabled(True)
         self.statusBar().showMessage("Varredura cancelada.")
+        self.lbl_resumo.setText("Varredura cancelada")
+        self.lbl_duracao_scan.setText(f"Interrompido em {self._formatar_duracao(self._inicio_scan_lan)}")
 
     def ao_concluir_scan(self, dispositivos: list[dict]):
         self.btn_init.setEnabled(True)
@@ -456,6 +566,7 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Pronto")
 
         self.lbl_resumo.setText(f"{len(dispositivos)} Dispositivo(s) encontrado(s)")
+        self.lbl_duracao_scan.setText(f"Scan concluído em {self._formatar_duracao(self._inicio_scan_lan)}")
 
         for item in dispositivos:
             linha = self.tabela_dispositivos.rowCount()
@@ -470,25 +581,46 @@ class MainWindow(QMainWindow):
 
     def ao_clicar_duplo_dispositivo(self, item: QTableWidgetItem):
         linha = item.row()
-        ip_selecionado = self.tabela_dispositivos.item(linha, 1).text()
-        nome_selecionado = self.tabela_dispositivos.item(linha, 2).text()
+        item_ip = self.tabela_dispositivos.item(linha, 1)
+        item_nome = self.tabela_dispositivos.item(linha, 2)
+
+        if item_ip is None:
+            return
+
+        ip_selecionado = item_ip.text()
+        nome_selecionado = item_nome.text() if item_nome else "-"
 
         self.executar_scan_portas(ip_selecionado, nome_selecionado)
 
     def iniciar_scan_ip_publico_manual(self):
         ip_publico = self.input_ip_publico.text().strip()
-        if not ip_publico:
-            self.statusBar().showMessage("Por favor, informe um IP Público válido.")
+
+        self._limpar_estilo_erro(self.input_ip_publico)
+
+        ok, mensagem = validar_ip(ip_publico)
+        if not ok:
+            self._marcar_campo_invalido(self.input_ip_publico)
+            self._mostrar_erro("IP Público inválido", mensagem)
             return
 
         self.executar_scan_portas(ip_publico, "IP Público External")
 
     def executar_scan_portas(self, ip_alvo: str, nome_alvo: str = "-"):
+        # --- Validação das portas antes de disparar o worker ---
+        self._limpar_estilo_erro(self.input_portas_wan)
+
+        texto_portas = self.input_portas_wan.text().strip()
+        ok, mensagem, portas_personalizadas = validar_lista_portas(texto_portas)
+        if not ok:
+            self._marcar_campo_invalido(self.input_portas_wan)
+            self._mostrar_erro("Lista de portas inválida", mensagem)
+            return
+
+        portas_personalizadas = portas_personalizadas or None
+
         self.lbl_detalhe_ip.setText(f"IP Alvo: {ip_alvo}")
         self.lbl_detalhe_nome.setText(f"Nome: {nome_alvo}")
         self.tabela_portas.setRowCount(0)
-
-        portas_personalizadas = self.extrair_lista_portas()
 
         self.btn_scan_wan.setEnabled(False)
         self.btn_stop.setEnabled(True)

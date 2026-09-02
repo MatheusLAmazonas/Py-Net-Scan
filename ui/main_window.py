@@ -186,14 +186,13 @@ class MainWindow(QMainWindow):
         layout_topo.setContentsMargins(5, 5, 5, 5)
         layout_topo.setSpacing(5)
 
-        self.btn_init = QPushButton("▶ Iniciar Scan LAN")
+        self.btn_init = QPushButton("Iniciar Scan LAN")
         self.btn_stop = QPushButton("■ Parar")
         self.btn_tema = ToggleSwitch()
         self.btn_stop.setEnabled(False)
 
         self.btn_init.setFixedSize(140, 32)
         self.btn_stop.setFixedSize(90, 32)
-        self.btn_tema.setFixedSize(120, 32)
 
         layout_topo.addWidget(self.btn_init)
         layout_topo.addWidget(self.btn_stop)
@@ -454,11 +453,11 @@ class MainWindow(QMainWindow):
                     color: #ffffff; 
                     border: 1px solid #444;
                 }
-                QPushButton { 
-                    background-color: #0078d7; 
-                    color: white; 
-                    border-radius: 4px; 
-                    padding: 5px; 
+                QPushButton#toggle_tema {
+                    background-color: transparent;
+                    border: none;
+                    padding: 0px;
+}
                 }
                 QPushButton:hover { 
                     background-color: #005a9e; 
@@ -494,7 +493,6 @@ class MainWindow(QMainWindow):
             self.lbl_resumo.setStyleSheet(estilo_rodape_dark)
             self.lbl_duracao_scan.setStyleSheet(estilo_rodape_dark)
         else:
-            self.btn_tema = ToggleSwitch()
             self.setStyleSheet("")
             estilo_rodape_light = "font-weight: bold; padding: 4px; background-color: #D8D8D8;"
             self.lbl_resumo.setStyleSheet(estilo_rodape_light)

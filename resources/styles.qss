@@ -105,6 +105,21 @@ QPushButton:disabled {
     border-color: #CCCCCC;
 }
 
+QPushButton#toggle_tema {
+    background-color: transparent;
+    border: none;
+    padding: 0px;
+    border-radius: 0px;
+}
+
+QPushButton#toggle_tema:hover {
+    background-color: transparent;
+}
+
+QPushButton#toggle_tema:pressed {
+    background-color: transparent;
+}
+
 /* ===================================================================
    TABELAS (QTableWidget)
    =================================================================== */

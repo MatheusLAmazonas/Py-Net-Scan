@@ -6,6 +6,7 @@ from PySide6.QtGui import QRegularExpressionValidator
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QFileDialog,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
@@ -25,6 +26,7 @@ from PySide6.QtWidgets import (
 from ui.threads import ICMPWorkerThread, WANWorkerThread
 from ui.toggle_switch import ToggleSwitch
 from core.validators import validar_faixa_ip, validar_ip, validar_lista_portas
+from core.pdf_generator import generate_lan_report, generate_ports_report
 
 
 # Estilo aplicado a um QLineEdit quando o valor digitado é inválido.
@@ -188,14 +190,17 @@ class MainWindow(QMainWindow):
 
         self.btn_init = QPushButton("Iniciar Scan LAN")
         self.btn_stop = QPushButton("■ Parar")
+        self.btn_export_pdf = QPushButton("Exportar PDF")
         self.btn_tema = ToggleSwitch()
         self.btn_stop.setEnabled(False)
 
         self.btn_init.setFixedSize(140, 32)
         self.btn_stop.setFixedSize(90, 32)
+        self.btn_export_pdf.setFixedSize(120, 32)
 
         layout_topo.addWidget(self.btn_init)
         layout_topo.addWidget(self.btn_stop)
+        layout_topo.addWidget(self.btn_export_pdf)
         layout_topo.addStretch()
         layout_topo.addWidget(self.btn_tema)
         
@@ -222,8 +227,6 @@ class MainWindow(QMainWindow):
         gb_ip_range = QGroupBox("Faixa de IP")
         layout_ip = QVBoxLayout(gb_ip_range)
 
-        # Regex simples para bloquear digitação de caracteres claramente
-        # inválidos em campos de IP (permite dígitos e pontos).
         regex_ip = QRegularExpression(r"^[0-9.]{0,15}$")
         validador_ip = QRegularExpressionValidator(regex_ip)
 
@@ -350,7 +353,6 @@ class MainWindow(QMainWindow):
         self.lbl_resumo.setStyleSheet("font-weight: bold; padding: 4px; background-color: #D8D8D8;")
         layout_rodape_disp.addWidget(self.lbl_resumo, stretch=1)
 
-        # Mostra quanto tempo o último scan levou (espelhando o resumo, no lado oposto)
         self.lbl_duracao_scan = QLabel("")
         self.lbl_duracao_scan.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.lbl_duracao_scan.setStyleSheet("font-weight: bold; padding: 4px; background-color: #D8D8D8;")
@@ -398,6 +400,7 @@ class MainWindow(QMainWindow):
         self.btn_init.clicked.connect(self.iniciar_scan)
         self.btn_stop.clicked.connect(self.parar_scan)
         self.btn_scan_wan.clicked.connect(self.iniciar_scan_ip_publico_manual)
+        self.btn_export_pdf.clicked.connect(self.exportar_relatorio_pdf)
         self.tabela_dispositivos.itemDoubleClicked.connect(self.ao_clicar_duplo_dispositivo)
 
         # =============================================================
@@ -427,8 +430,7 @@ class MainWindow(QMainWindow):
         return f"{horas:02d}:{minutos:02d}:{segundos:02d}"
 
     def _mostrar_erro(self, titulo: str, mensagem: str):
-        """Mostra o erro tanto na status bar (feedback rápido) quanto em
-        um popup (garante que o usuário não perca a mensagem)."""
+        """Mostra o erro tanto na status bar quanto em um popup."""
         self.statusBar().showMessage(f"Erro: {mensagem}", 8000)
         QMessageBox.warning(self, titulo, mensagem)
 
@@ -452,12 +454,6 @@ class MainWindow(QMainWindow):
                     background-color: #1e1e1e; 
                     color: #ffffff; 
                     border: 1px solid #444;
-                }
-                QPushButton#toggle_tema {
-                    background-color: transparent;
-                    border: none;
-                    padding: 0px;
-}
                 }
                 QPushButton:hover { 
                     background-color: #005a9e; 
@@ -498,13 +494,9 @@ class MainWindow(QMainWindow):
             self.lbl_resumo.setStyleSheet(estilo_rodape_light)
             self.lbl_duracao_scan.setStyleSheet(estilo_rodape_light)
 
-        # Atualiza o terminal com o estado atual do tema
         self.terminal.atualizar_tema(self.is_dark_mode)
 
     def extrair_lista_portas(self) -> list[int] | None:
-        """Mantido por compatibilidade; a validação "de verdade" agora
-        acontece em core.validators.validar_lista_portas, chamada antes
-        de iniciar o scan WAN."""
         texto = self.input_portas_wan.text().strip()
         if not texto:
             return None
@@ -515,9 +507,8 @@ class MainWindow(QMainWindow):
     def iniciar_scan(self):
         ip_de = self.input_ip_de.text().strip()
         ip_ate = self.input_ip_ate.text().strip()
-        num_threads = self.spin_threads.value()  # Resgata o valor selecionado na UI
+        num_threads = self.spin_threads.value()
 
-        # --- Validação da faixa de IP antes de disparar o worker ---
         self._limpar_estilo_erro(self.input_ip_de)
         self._limpar_estilo_erro(self.input_ip_ate)
 
@@ -535,10 +526,8 @@ class MainWindow(QMainWindow):
         self.btn_stop.setEnabled(True)
         self.statusBar().showMessage(f"Escaneando faixa {ip_de} até {ip_ate}")
 
-        # Marca o instante de início para calcular a duração ao concluir
         self._inicio_scan_lan = time.perf_counter()
 
-        # Passa o número de threads para o WorkerThread
         self.worker = ICMPWorkerThread(ip_de, ip_ate, num_threads)
         self.worker.concluido.connect(self.ao_concluir_scan)
         self.worker.start()
@@ -577,6 +566,72 @@ class MainWindow(QMainWindow):
             self.tabela_dispositivos.setItem(linha, 4, QTableWidgetItem(item.get("fabricante", "-")))
             self.tabela_dispositivos.setItem(linha, 5, QTableWidgetItem(item.get("rtt", "")))
 
+    def exportar_relatorio_pdf(self):
+        """Permite escolher entre exportar a LAN geral ou as portas do IP selecionado/escaneado."""
+        tem_lan = self.tabela_dispositivos.rowCount() > 0
+        tem_portas = self.tabela_portas.rowCount() > 0
+
+        if not tem_lan and not tem_portas:
+            QMessageBox.warning(self, "Aviso", "Não há dados de LAN ou de Portas para exportar.")
+            return
+
+        escolha = "LAN"
+        if tem_lan and tem_portas:
+            msg_box = QMessageBox(self)
+            msg_box.setWindowTitle("Escolher Relatório")
+            msg_box.setText("Qual relatório você deseja exportar?")
+            btn_lan = msg_box.addButton("Rede LAN (Geral)", QMessageBox.ButtonRole.AcceptRole)
+            btn_portas = msg_box.addButton("Portas do Alvo Atual", QMessageBox.ButtonRole.AcceptRole)
+            msg_box.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
+            msg_box.exec()
+
+            if msg_box.clickedButton() == btn_portas:
+                escolha = "PORTAS"
+            elif msg_box.clickedButton() != btn_lan:
+                return
+        elif tem_portas and not tem_lan:
+            escolha = "PORTAS"
+
+        if escolha == "LAN":
+            file_path, _ = QFileDialog.getSaveFileName(self, "Salvar Relatório LAN", "relatorio_rede_lan.pdf", "PDF Files (*.pdf)")
+            if file_path:
+                try:
+                    results = []
+                    for row in range(self.tabela_dispositivos.rowCount()):
+                        results.append({
+                            "status": self.tabela_dispositivos.item(row, 0).text(),
+                            "ip": self.tabela_dispositivos.item(row, 1).text(),
+                            "nome": self.tabela_dispositivos.item(row, 2).text(),
+                            "mac": self.tabela_dispositivos.item(row, 3).text(),
+                            "fabricante": self.tabela_dispositivos.item(row, 4).text(),
+                            "rtt": self.tabela_dispositivos.item(row, 5).text(),
+                        })
+                    generate_lan_report(file_path, results)
+                    QMessageBox.information(self, "Sucesso", "Relatório LAN gerado com sucesso!")
+                except Exception as e:
+                    QMessageBox.critical(self, "Erro", f"Erro ao gerar PDF: {str(e)}")
+        
+        elif escolha == "PORTAS":
+            file_path, _ = QFileDialog.getSaveFileName(self, "Salvar Relatório de Portas", "relatorio_portas_alvo.pdf", "PDF Files (*.pdf)")
+            if file_path:
+                try:
+                    ip_alvo = self.lbl_detalhe_ip.text().replace("IP Alvo: ", "")
+                    nome_alvo = self.lbl_detalhe_nome.text().replace("Nome: ", "")
+                    
+                    results = []
+                    for row in range(self.tabela_portas.rowCount()):
+                        results.append({
+                            "porta": self.tabela_portas.item(row, 0).text(),
+                            "protocolo": self.tabela_portas.item(row, 1).text(),
+                            "estado": self.tabela_portas.item(row, 2).text(),
+                            "servico": self.tabela_portas.item(row, 3).text(),
+                            "versao": self.tabela_portas.item(row, 4).text(),
+                        })
+                    generate_ports_report(file_path, ip_alvo, nome_alvo, results)
+                    QMessageBox.information(self, "Sucesso", "Relatório de Portas gerado com sucesso!")
+                except Exception as e:
+                    QMessageBox.critical(self, "Erro", f"Erro ao gerar PDF: {str(e)}")
+
     def ao_clicar_duplo_dispositivo(self, item: QTableWidgetItem):
         linha = item.row()
         item_ip = self.tabela_dispositivos.item(linha, 1)
@@ -604,7 +659,6 @@ class MainWindow(QMainWindow):
         self.executar_scan_portas(ip_publico, "IP Público External")
 
     def executar_scan_portas(self, ip_alvo: str, nome_alvo: str = "-"):
-        # --- Validação das portas antes de disparar o worker ---
         self._limpar_estilo_erro(self.input_portas_wan)
 
         texto_portas = self.input_portas_wan.text().strip()

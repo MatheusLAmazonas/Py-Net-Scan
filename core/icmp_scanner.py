@@ -1,10 +1,14 @@
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 import re
 import socket
 import subprocess
 import sys
 import urllib.request
 import uuid
+
+# Executor global para evitar chamadas ao executor preguiçoso (lazy_import) do asyncio no Python 3.15
+EXECUTOR_GLOBAL = ThreadPoolExecutor(max_workers=50)
 
 CACHE_FABRICANTES = {}
 
@@ -101,9 +105,9 @@ async def _sondar_ip(ip: str, semaforo_fabricante: asyncio.Semaphore) -> dict | 
 
     loop = asyncio.get_running_loop()
 
-    # Busca Nome e MAC
-    nome_task = loop.run_in_executor(None, _obter_nome_host_sync, ip)
-    mac_task = loop.run_in_executor(None, _obter_mac_sync, ip)
+    # Busca Nome e MAC usando o EXECUTOR_GLOBAL explícito
+    nome_task = loop.run_in_executor(EXECUTOR_GLOBAL, _obter_nome_host_sync, ip)
+    mac_task = loop.run_in_executor(EXECUTOR_GLOBAL, _obter_mac_sync, ip)
 
     try:
         nome, mac = await asyncio.gather(nome_task, mac_task)
@@ -115,7 +119,9 @@ async def _sondar_ip(ip: str, semaforo_fabricante: asyncio.Semaphore) -> dict | 
         # Passa pelo semáforo instanciado dentro do loop ativo
         async with semaforo_fabricante:
             try:
-                fabricante = await loop.run_in_executor(None, _obter_fabricante_sync, mac)
+                fabricante = await loop.run_in_executor(
+                    EXECUTOR_GLOBAL, _obter_fabricante_sync, mac
+                )
             except Exception:
                 fabricante = "-"
 
